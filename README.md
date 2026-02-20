@@ -1,2 +1,2 @@
-# deep_learning_specialization
-repo for programming assignments in deep learning specialization on deeplearning.ai
+# deeplearning.ai
+repo for programming assignments in all courses on deeplearning.ai
