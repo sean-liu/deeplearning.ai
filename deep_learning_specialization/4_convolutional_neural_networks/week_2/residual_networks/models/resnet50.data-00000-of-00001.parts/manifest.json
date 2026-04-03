@@ -1,0 +1,7 @@
+{
+  "original_name": "resnet50.data-00000-of-00001",
+  "original_size": 282887347,
+  "chunk_size": 31457280,
+  "part_count": 9,
+  "part_name_pattern": "resnet50.data-00000-of-00001.partNNN"
+}
