@@ -21,7 +21,7 @@ deep-learning-specialization/
 
 Recommended Python version: **3.12.x** (used to create the local `.venv`).
 
-## Utilities
+## tools
 
 - `split30m.py`  
   Recursively scans a target folder and splits any file larger than 30 MiB into smaller parts, preserving the original folder structure. Each split file is stored in its own `.parts` folder with a manifest for safe reconstruction.
@@ -32,5 +32,5 @@ Recommended Python version: **3.12.x** (used to create the local `.venv`).
 ### Usage
 
 ```bash
-python split30m.py /path/to/target_folder
-python mergeparts.py /path/to/target_folder
+python ./tools/split30m.py /path/to/target_folder
+python ./tools/mergeparts.py /path/to/target_folder
