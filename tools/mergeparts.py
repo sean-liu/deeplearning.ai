@@ -1,6 +1,8 @@
 import argparse
+import filecmp
 import json
 import shutil
+import tempfile
 from pathlib import Path
 
 
@@ -46,22 +48,43 @@ def merge_parts_dir(parts_dir: Path) -> None:
 
     print(f"Merging: {parts_dir} -> {output_file}")
 
-    with open(output_file, "wb") as out:
-        for part_file in expected_parts:
-            with open(part_file, "rb") as pf:
-                while True:
-                    chunk = pf.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    out.write(chunk)
+    with tempfile.NamedTemporaryFile(
+        dir=parts_dir.parent, prefix=f".{original_name}.merge-", delete=False
+    ) as temp_file:
+        temp_output = Path(temp_file.name)
 
-    actual_size = output_file.stat().st_size
-    if actual_size != expected_size:
-        output_file.unlink(missing_ok=True)
-        raise RuntimeError(
-            f"Size mismatch after merge for {output_file}: "
-            f"expected {expected_size}, got {actual_size}"
-        )
+    try:
+        with open(temp_output, "wb") as out:
+            for part_file in expected_parts:
+                with open(part_file, "rb") as pf:
+                    while True:
+                        chunk = pf.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+
+        actual_size = temp_output.stat().st_size
+        if actual_size != expected_size:
+            raise RuntimeError(
+                f"Size mismatch after merge for {output_file}: "
+                f"expected {expected_size}, got {actual_size}"
+            )
+
+        if output_file.exists():
+            if not output_file.is_file():
+                raise RuntimeError(
+                    f"Expected merge output path to be a file: {output_file}"
+                )
+            if filecmp.cmp(output_file, temp_output, shallow=False):
+                print(f"Existing merged file already matches parts: {output_file}")
+                temp_output.unlink(missing_ok=True)
+            else:
+                print(f"Existing file differs from parts. Replacing: {output_file}")
+                temp_output.replace(output_file)
+        else:
+            temp_output.replace(output_file)
+    finally:
+        temp_output.unlink(missing_ok=True)
 
     shutil.rmtree(parts_dir)
     print(f"Removed parts folder: {parts_dir}")
