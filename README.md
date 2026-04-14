@@ -29,6 +29,8 @@ deep_learning_specialization/
 
 tools/
   download.py
+  prepare.py
+  tidy.py
   split30m.py
   mergeparts.py
 ```
@@ -44,24 +46,46 @@ Each assignment directory includes its own `requirements.txt` so dependencies ca
 If you are visiting this repository for the first time, a typical workflow looks like this:
 
 1. Clone the repository.
-2. Reconstruct any split files if needed.
-3. Create and activate a Python virtual environment.
-4. Go to the assignment folder you want to run.
-5. Install that assignment's dependencies from its local `requirements.txt`.
-6. Open the notebook and work from there.
+2. Run the prepare script.
+3. Open the notebook in VS Code.
+4. Select the repo `.venv` as the Jupyter kernel.
 
 Example:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python ./tools/mergeparts.py .
-
-cd deep_learning_specialization/1_neural_networks_and_deep_learning/week_2/logistic_regression_with_a_neural_network_mindset
-pip install -r requirements.txt
+python3 ./tools/prepare.py
 ```
 
-After installing the requirements for an assignment, you can open its notebook with Jupyter.
+The prepare script will:
+
+- detect whether any split `.parts` folders need to be merged
+- create the repo-level `.venv` if it does not exist yet
+- let you choose an assignment
+- install that assignment's dependencies
+- install `ipykernel` only if it is not already present in the repo `.venv`
+
+You can also prepare a specific assignment directly:
+
+```bash
+python3 ./tools/prepare.py deep_learning_specialization/1_neural_networks_and_deep_learning/week_2/logistic_regression_with_a_neural_network_mindset
+```
+
+For VS Code with the Jupyter extension:
+
+1. Run `python3 ./tools/prepare.py`
+2. Open the notebook you want to use
+3. Click `Select Kernel`
+4. Choose the interpreter inside this repository's `.venv`
+
+The script prints the exact interpreter path when it finishes.
+
+If you prefer terminal-based Jupyter, you can still activate the environment manually:
+
+```bash
+source .venv/bin/activate
+```
+
+After preparing an assignment, you can open its notebook with Jupyter.
 
 ```bash
 jupyter notebook
@@ -74,6 +98,12 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
 - `download.py`
   Creates a zip archive of the current directory contents.
 
+- `prepare.py`
+  Visitor-friendly setup script. It checks whether split files need to be merged, creates the repo-level `.venv`, and installs the selected assignment's requirements.
+
+- `tidy.py`
+  Maintenance script for the repository owner. It scans for files larger than 30 MiB, skips ignored folders such as `.git`, `.venv`, and existing `.parts` folders, and offers to split the remaining large files.
+
 - `split30m.py`
   Recursively scans a target folder and splits files larger than 30 MiB into smaller parts while preserving the folder structure.
 
@@ -83,16 +113,20 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
 ### Usage
 
 ```bash
-python ./tools/download.py
-python ./tools/split30m.py /path/to/target_folder
-python ./tools/mergeparts.py /path/to/target_folder
+python3 ./tools/download.py
+python3 ./tools/prepare.py
+python3 ./tools/tidy.py
+python3 ./tools/split30m.py /path/to/target_folder
+python3 ./tools/mergeparts.py /path/to/target_folder
 ```
 
 ## Visitor Workflow
 
-- `mergeparts.py` is for visitors who clone the repository and need to reconstruct large files that were split into `.parts` folders.
+- `prepare.py` is the main visitor entry point for local setup.
+- `mergeparts.py` is used by `prepare.py`, or directly by visitors who only want to reconstruct split files.
 - Assignment-level `requirements.txt` files are for visitors who want to install only the packages needed for one notebook at a time.
-- `split30m.py` is mainly a maintenance tool for the repository owner when preparing large files for storage or sharing.
+- `tidy.py` is the main maintenance entry point before sharing or committing large repo content.
+- `split30m.py` is the lower-level file splitting utility used when you want to split a chosen folder directly.
 
 ## Notes
 
