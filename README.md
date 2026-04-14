@@ -58,7 +58,7 @@ python3 ./tools/prepare.py
 
 The prepare script will:
 
-- detect whether any split `.parts` folders need to be merged
+- detect whether the selected assignment contains any split `.parts` folders and merge them
 - create the repo-level `.venv` if it does not exist yet
 - let you choose an assignment
 - install that assignment's dependencies
@@ -99,7 +99,7 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
   Creates a zip archive of the current directory contents.
 
 - `prepare.py`
-  Visitor-friendly setup script. It checks whether split files need to be merged, creates the repo-level `.venv`, and installs the selected assignment's requirements.
+  Visitor-friendly setup script. It checks whether the selected assignment contains split files that need to be merged, creates the repo-level `.venv`, and installs that assignment's requirements.
 
 - `tidy.py`
   Maintenance script for the repository owner. It scans for files larger than 30 MiB, skips ignored folders such as `.git`, `.venv`, and existing `.parts` folders, and offers to split the remaining large files.

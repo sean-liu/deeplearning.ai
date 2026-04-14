@@ -102,10 +102,13 @@ def ensure_ipykernel(venv_python: Path) -> None:
 def prepare_split_files(root: Path) -> None:
     parts_dirs = find_parts_dirs(root)
     if not parts_dirs:
-        print("No split file folders found. Skipping merge step.")
+        print("No split file folders found for this assignment. Skipping merge step.")
         return
 
-    print(f"Found {len(parts_dirs)} split file folder(s). Reconstructing files...")
+    print(
+        f"Found {len(parts_dirs)} split file folder(s) for this assignment. "
+        "Reconstructing files..."
+    )
     walk_and_merge(str(root))
 
 
@@ -145,7 +148,7 @@ def main() -> None:
     else:
         requirements_path = choose_assignment_interactively(requirement_files)
 
-    prepare_split_files(REPO_ROOT)
+    prepare_split_files(requirements_path.parent)
     venv_python = ensure_repo_venv()
     install_requirements(venv_python, requirements_path)
     ensure_ipykernel(venv_python)
