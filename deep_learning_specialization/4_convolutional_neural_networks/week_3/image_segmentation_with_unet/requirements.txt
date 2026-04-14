@@ -1,0 +1,6 @@
+numpy
+imageio
+matplotlib
+pandas
+tensorflow
+termcolor
