@@ -1,5 +1,6 @@
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 CHUNK_SIZE = 30 * 1024 * 1024  # 30 MiB
@@ -11,7 +12,15 @@ def split_file(file_path: Path, chunk_size: int) -> None:
         return
 
     part_dir = file_path.parent / f"{file_path.name}.parts"
-    part_dir.mkdir(exist_ok=True)
+    if part_dir.exists():
+        if not part_dir.is_dir():
+            raise NotADirectoryError(
+                f"Expected parts path to be a directory: {part_dir}"
+            )
+        print(f"Removing existing parts folder before re-splitting: {part_dir}")
+        shutil.rmtree(part_dir)
+
+    part_dir.mkdir()
 
     print(f"Splitting: {file_path} ({file_size / 1024 / 1024:.2f} MB)")
 
