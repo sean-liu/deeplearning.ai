@@ -1,0 +1,7 @@
+{
+  "original_name": "imagenet-vgg-verydeep-19.mat",
+  "original_size": 344930304,
+  "chunk_size": 31457280,
+  "part_count": 11,
+  "part_name_pattern": "imagenet-vgg-verydeep-19.mat.partNNN"
+}
