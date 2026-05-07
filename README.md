@@ -29,6 +29,7 @@ deep_learning_specialization/
 
 tools/
   download.py
+  genrequirements.py
   prepare.py
   tidy.py
   split30m.py
@@ -101,6 +102,9 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
 - `prepare.py`
   Visitor-friendly setup script. It checks whether the selected assignment contains split files that need to be merged, creates the repo-level `.venv`, and installs that assignment's requirements.
 
+- `genrequirements.py`
+  Scans a target assignment folder for `.py` and `.ipynb` imports and creates a `requirements.txt` file when one does not already exist.
+
 - `tidy.py`
   Maintenance script for the repository owner. It scans for files larger than 30 MiB, skips ignored folders such as `.git`, `.venv`, and existing `.parts` folders, and offers to split the remaining large files.
 
@@ -114,6 +118,7 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
 
 ```bash
 python3 ./tools/download.py
+python3 ./tools/genrequirements.py /path/to/assignment_folder
 python3 ./tools/prepare.py
 python3 ./tools/tidy.py
 python3 ./tools/split30m.py /path/to/target_folder
@@ -123,6 +128,7 @@ python3 ./tools/mergeparts.py /path/to/target_folder
 ## Visitor Workflow
 
 - `prepare.py` is the main visitor entry point for local setup.
+- `genrequirements.py` is the maintenance helper for creating a missing assignment-level `requirements.txt`.
 - `mergeparts.py` is used by `prepare.py`, or directly by visitors who only want to reconstruct split files.
 - Assignment-level `requirements.txt` files are for visitors who want to install only the packages needed for one notebook at a time.
 - `tidy.py` is the main maintenance entry point before sharing or committing large repo content.
