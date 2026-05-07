@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from mergeparts import walk_and_merge
+from merge_parts import walk_and_merge
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

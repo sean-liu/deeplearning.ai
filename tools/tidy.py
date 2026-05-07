@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from split30m import CHUNK_SIZE, split_file
+from split_parts import CHUNK_SIZE, split_file
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
