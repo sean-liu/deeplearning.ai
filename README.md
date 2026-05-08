@@ -106,7 +106,7 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
   Scans a target assignment folder for `.py` and `.ipynb` imports and creates a `requirements.txt` file when one does not already exist.
 
 - `tidy.py`
-  Maintenance script for the repository owner. It scans for files larger than 30 MiB, skips ignored folders such as `.git`, `.venv`, and existing `.parts` folders, and offers to split the remaining large files.
+  Maintenance script for the repository owner. It removes `__pycache__` directories inside the target folder, respects `.gitignore` plus hardcoded skips such as `.git`, `.venv`, and existing `.parts` folders, and offers to split the remaining large files over 30 MiB.
 
 - `split_parts.py`
   Recursively scans a target folder and splits files larger than 30 MiB into smaller parts while preserving the folder structure.
@@ -121,6 +121,7 @@ python3 ./tools/download.py
 python3 ./tools/generate_requirements.py /path/to/assignment_folder
 python3 ./tools/prepare.py
 python3 ./tools/tidy.py
+python3 ./tools/tidy.py /path/to/target_folder
 python3 ./tools/split_parts.py /path/to/target_folder
 python3 ./tools/merge_parts.py /path/to/target_folder
 ```
@@ -131,7 +132,7 @@ python3 ./tools/merge_parts.py /path/to/target_folder
 - `generate_requirements.py` is the maintenance helper for creating a missing assignment-level `requirements.txt`.
 - `merge_parts.py` is used by `prepare.py`, or directly by visitors who only want to reconstruct split files.
 - Assignment-level `requirements.txt` files are for visitors who want to install only the packages needed for one notebook at a time.
-- `tidy.py` is the main maintenance entry point before sharing or committing large repo content.
+- `tidy.py` is the main maintenance entry point before sharing or committing large repo content, either repo-wide or for a chosen subfolder.
 - `split_parts.py` is the lower-level file splitting utility used when you want to split a chosen folder directly.
 
 ## Notes
