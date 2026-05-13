@@ -62,6 +62,12 @@ def remove_pycache_dirs(root: Path) -> int:
     for current_root, dirnames, _ in os_walk(root):
         current_path = Path(current_root)
 
+        pycache_dirs = [Path(current_root, name) for name in dirnames if name == "__pycache__"]
+        for pycache_dir in pycache_dirs:
+            shutil.rmtree(pycache_dir)
+            dirnames.remove(pycache_dir.name)
+            removed += 1
+
         pruned_dirnames = []
         for dirname in dirnames:
             dir_path = current_path / dirname
@@ -76,12 +82,6 @@ def remove_pycache_dirs(root: Path) -> int:
             for dirname in dirnames
             if (current_path / dirname) not in git_ignored_dirs
         ]
-
-        pycache_dirs = [Path(current_root, name) for name in dirnames if name == "__pycache__"]
-        for pycache_dir in pycache_dirs:
-            shutil.rmtree(pycache_dir)
-            dirnames.remove(pycache_dir.name)
-            removed += 1
     return removed
 
 
