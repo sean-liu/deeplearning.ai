@@ -1,0 +1,8 @@
+ipython
+matplotlib
+mido
+music21
+numpy
+pydub
+tensorflow
+termcolor

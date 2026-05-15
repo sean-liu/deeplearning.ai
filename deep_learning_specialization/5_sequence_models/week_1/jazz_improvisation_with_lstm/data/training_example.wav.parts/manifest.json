@@ -1,0 +1,7 @@
+{
+  "original_name": "training_example.wav",
+  "original_size": 82004234,
+  "chunk_size": 31457280,
+  "part_count": 3,
+  "part_name_pattern": "training_example.wav.partNNN"
+}
