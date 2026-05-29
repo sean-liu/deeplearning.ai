@@ -1,0 +1,7 @@
+{
+  "original_name": "glove.6B.50d.txt",
+  "original_size": 171350079,
+  "chunk_size": 31457280,
+  "part_count": 6,
+  "part_name_pattern": "glove.6B.50d.txt.partNNN"
+}
