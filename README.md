@@ -8,6 +8,7 @@ Programming assignments, notes, and helper scripts for courses on deeplearning.a
   - [1. Neural Networks and Deep Learning](./deep_learning_specialization/1_neural_networks_and_deep_learning/)
   - [2. Improving Deep Neural Networks](./deep_learning_specialization/2_improving_deep_neural_networks/)
   - [4. Convolutional Neural Networks](./deep_learning_specialization/4_convolutional_neural_networks/)
+  - [5. Sequence Models](./deep_learning_specialization/5_sequence_models/)
 
 ## Structure
 
@@ -22,6 +23,11 @@ deep_learning_specialization/
     week_2/
     week_3/
   4_convolutional_neural_networks/
+    week_1/
+    week_2/
+    week_3/
+    week_4/
+  5_sequence_models/
     week_1/
     week_2/
     week_3/
@@ -138,5 +144,6 @@ python3 ./tools/merge_parts.py /path/to/target_folder
 ## Notes
 
 - This repository is organized as a learning archive rather than a single packaged Python project.
+- It currently includes assignments from courses 1, 2, 4, and 5 of the Deep Learning Specialization.
 - Dependencies were mapped per assignment from notebook and source imports.
 - Large datasets, images, and split model artifacts were intentionally ignored when deriving dependency files.
