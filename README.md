@@ -65,7 +65,7 @@ python3 ./tools/prepare.py
 
 The prepare script will:
 
-- detect whether the selected assignment contains any split `.parts` folders and merge them
+- merge any split tidy archive before restoring it, then restore only archives marked by `tidy.py`
 - create the repo-level `.venv` if it does not exist yet
 - let you choose an assignment
 - install that assignment's dependencies
@@ -106,13 +106,13 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
   Creates a zip archive of the current directory contents.
 
 - `prepare.py`
-  Visitor-friendly setup script. It checks whether the selected assignment contains split files that need to be merged, creates the repo-level `.venv`, and installs that assignment's requirements.
+  Visitor-friendly setup script. It first merges split tidy archives, then restores only tidy-marked directory archives, creates the repo-level `.venv`, and installs that assignment's requirements. User-created `.zip` and `.parts` files without a tidy archive marker are left untouched.
 
 - `generate_requirements.py`
   Scans a target assignment folder for `.py` and `.ipynb` imports and creates a `requirements.txt` file when one does not already exist.
 
 - `tidy.py`
-  Maintenance script for the repository owner. It removes `__pycache__` directories inside the target folder, respects `.gitignore` plus hardcoded skips such as `.git`, `.venv`, and existing `.parts` folders, and offers to split the remaining large files over 30 MiB.
+  Maintenance script for the repository owner. It removes `__pycache__` directories inside the target folder, respects `.gitignore` plus hardcoded skips such as `.git`, `.venv`, and existing `.parts` folders, and offers to split remaining files over 30 MiB. A directory with more than 200 direct regular files can instead be archived as a sibling `.zip`; archives larger than 30 MiB are split into the existing `.parts` format. Tidy writes a matching `.zip.archive.json` marker, and only archives with that marker are restored automatically by `prepare.py`.
 
 - `split_parts.py`
   Recursively scans a target folder and splits files larger than 30 MiB into smaller parts while preserving the folder structure.
@@ -134,7 +134,7 @@ python3 ./tools/merge_parts.py /path/to/target_folder
 
 ## Visitor Workflow
 
-- `prepare.py` is the main visitor entry point for local setup.
+- `prepare.py` is the main visitor entry point for local setup. It restores only archives explicitly marked by `tidy.py`, never arbitrary user-created `.zip` or `.parts` files.
 - `generate_requirements.py` is the maintenance helper for creating a missing assignment-level `requirements.txt`.
 - `merge_parts.py` is used by `prepare.py`, or directly by visitors who only want to reconstruct split files.
 - Assignment-level `requirements.txt` files are for visitors who want to install only the packages needed for one notebook at a time.
