@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SKIP_DIR_NAMES = {
     ".git",
     ".venv",
+    "__pycache__",
 }
 DIRECT_FILE_LIMIT = 200
 ARCHIVE_FORMAT_VERSION = 1
@@ -97,19 +98,16 @@ def os_walk(root: Path):
     return os.walk(root, topdown=True)
 
 
-def find_large_files(root: Path, chunk_size: int) -> list[Path]:
-    large_files = []
+def filtered_walk(root: Path):
     for current_root, dirnames, filenames in os_walk(root):
         current_path = Path(current_root)
 
-        pruned_dirnames = []
-        for dirname in dirnames:
-            dir_path = current_path / dirname
-            if is_hardcoded_skip_dir(dir_path):
-                continue
-            pruned_dirnames.append(dirname)
-        dirnames[:] = pruned_dirnames
-
+        dirnames[:] = [
+            dirname
+            for dirname in dirnames
+            if not is_hardcoded_skip_dir(current_path / dirname)
+            and not (current_path / dirname).is_symlink()
+        ]
         git_ignored_dirs = git_ignored_paths([current_path / dirname for dirname in dirnames])
         dirnames[:] = [
             dirname
@@ -119,9 +117,18 @@ def find_large_files(root: Path, chunk_size: int) -> list[Path]:
 
         file_paths = [current_path / filename for filename in filenames]
         git_ignored_files = git_ignored_paths(file_paths)
-        for path in file_paths:
-            if path in git_ignored_files:
-                continue
+        regular_files = [
+            path
+            for path in file_paths
+            if path not in git_ignored_files and path.is_file() and not path.is_symlink()
+        ]
+        yield current_path, dirnames, regular_files
+
+
+def find_large_files(root: Path, chunk_size: int) -> list[Path]:
+    large_files = []
+    for _, _, regular_files in filtered_walk(root):
+        for path in regular_files:
             if path.stat().st_size > chunk_size:
                 large_files.append(path)
     return sorted(large_files)
@@ -129,31 +136,8 @@ def find_large_files(root: Path, chunk_size: int) -> list[Path]:
 
 def find_archive_directories(root: Path) -> list[Path]:
     candidates = []
-    for current_root, dirnames, filenames in os_walk(root):
-        current_path = Path(current_root)
-
-        pruned_dirnames = []
-        for dirname in dirnames:
-            dir_path = current_path / dirname
-            if is_hardcoded_skip_dir(dir_path):
-                continue
-            pruned_dirnames.append(dirname)
-        dirnames[:] = pruned_dirnames
-
-        git_ignored_dirs = git_ignored_paths([current_path / dirname for dirname in dirnames])
-        dirnames[:] = [
-            dirname
-            for dirname in dirnames
-            if (current_path / dirname) not in git_ignored_dirs
-        ]
-
-        file_paths = [current_path / filename for filename in filenames]
-        git_ignored_files = git_ignored_paths(file_paths)
-        regular_file_count = sum(
-            path.is_file() and not path.is_symlink() and path not in git_ignored_files
-            for path in file_paths
-        )
-        if regular_file_count > DIRECT_FILE_LIMIT:
+    for current_path, _, regular_files in filtered_walk(root):
+        if len(regular_files) > DIRECT_FILE_LIMIT:
             candidates.append(current_path)
 
     # Archiving an ancestor includes all of its descendants, so do not offer
@@ -229,18 +213,15 @@ def archive_directory(directory: Path, chunk_size: int) -> None:
     try:
         with zipfile.ZipFile(temp_archive, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr(f"{directory.name}/", "")
-            for current_root, dirnames, filenames in os.walk(directory):
-                current_path = Path(current_root)
+            for current_path, dirnames, regular_files in filtered_walk(directory):
                 relative_directory = current_path.relative_to(directory.parent).as_posix()
                 for dirname in sorted(dirnames):
                     archive.writestr(f"{relative_directory}/{dirname}/", "")
-                for filename in sorted(filenames):
-                    source_path = current_path / filename
-                    if source_path.is_file():
-                        archive.write(
-                            source_path,
-                            source_path.relative_to(directory.parent).as_posix(),
-                        )
+                for source_path in sorted(regular_files):
+                    archive.write(
+                        source_path,
+                        source_path.relative_to(directory.parent).as_posix(),
+                    )
 
         with zipfile.ZipFile(temp_archive) as archive:
             bad_member = archive.testzip()
