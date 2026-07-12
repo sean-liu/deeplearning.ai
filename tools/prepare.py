@@ -170,6 +170,177 @@ def prepare_split_files(root: Path) -> None:
                 print(f"Could not merge tidy archive parts {parts_path}: {error}")
 
 
+def normalize_restore_root(raw_value: str) -> Path:
+    candidate = Path(raw_value).expanduser()
+    if not candidate.is_absolute():
+        candidate = REPO_ROOT / candidate
+
+    try:
+        candidate = candidate.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ValueError(f"folder does not exist: {raw_value}") from error
+
+    if not candidate.is_dir():
+        raise ValueError(f"folder is not a directory: {candidate}")
+    if not candidate.is_relative_to(REPO_ROOT):
+        raise ValueError(f"folder must be inside the repository: {candidate}")
+    return candidate
+
+
+def validate_legacy_parts_manifest(parts_path: Path) -> str:
+    if parts_path.is_symlink() or not parts_path.is_dir():
+        raise ValueError("parts path must be a real directory, not a symbolic link")
+
+    manifest_path = parts_path / "manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError("manifest.json must be a real file")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"could not read manifest.json: {error}") from error
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest must be a JSON object")
+
+    original_name = manifest.get("original_name")
+    if (
+        not isinstance(original_name, str)
+        or not original_name
+        or original_name in {".", ".."}
+        or "/" in original_name
+        or "\\" in original_name
+        or Path(original_name).name != original_name
+    ):
+        raise ValueError("original_name must be a single safe filename")
+    if parts_path.name != f"{original_name}.parts":
+        raise ValueError("parts directory name does not match original_name")
+
+    expected_size = manifest.get("original_size")
+    expected_count = manifest.get("part_count")
+    if (
+        not isinstance(expected_size, int)
+        or isinstance(expected_size, bool)
+        or expected_size < 0
+    ):
+        raise ValueError("original_size must be a non-negative integer")
+    if (
+        not isinstance(expected_count, int)
+        or isinstance(expected_count, bool)
+        or expected_count < 1
+    ):
+        raise ValueError("part_count must be a positive integer")
+
+    expected_names = {
+        f"{original_name}.part{index:03d}"
+        for index in range(1, expected_count + 1)
+    }
+    try:
+        actual_entries = {path.name: path for path in parts_path.iterdir()}
+    except OSError as error:
+        raise ValueError(f"could not inspect parts directory: {error}") from error
+    actual_part_names = set(actual_entries) - {"manifest.json"}
+    missing = sorted(expected_names - actual_part_names)
+    extra = sorted(actual_part_names - expected_names)
+    if missing:
+        raise ValueError(f"missing expected part(s): {', '.join(missing)}")
+    if extra:
+        raise ValueError(f"unexpected extra part(s): {', '.join(extra)}")
+
+    expected_parts = [
+        actual_entries[f"{original_name}.part{index:03d}"]
+        for index in range(1, expected_count + 1)
+    ]
+    invalid_parts = [
+        path.name for path in expected_parts if path.is_symlink() or not path.is_file()
+    ]
+    if invalid_parts:
+        raise ValueError(
+            f"part(s) must be real files: {', '.join(sorted(invalid_parts))}"
+        )
+    return original_name
+
+
+def write_legacy_archive_marker(marker_path: Path, archive_name: str) -> None:
+    directory_name = archive_name.removesuffix(".zip")
+    if not directory_name:
+        raise ValueError("ZIP archive name must include a non-empty directory name")
+
+    marker = {
+        "format_version": ARCHIVE_FORMAT_VERSION,
+        "archive_name": archive_name,
+        "directory_name": directory_name,
+    }
+    temporary_marker = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=marker_path.parent,
+            prefix=f".{marker_path.name}.",
+            delete=False,
+        ) as marker_file:
+            json.dump(marker, marker_file, indent=2)
+            marker_file.write("\n")
+            temporary_marker = Path(marker_file.name)
+        temporary_marker.replace(marker_path)
+    finally:
+        if temporary_marker is not None:
+            temporary_marker.unlink(missing_ok=True)
+
+
+def restore_legacy_parts(root: Path) -> bool:
+    candidates = sorted(path for path in root.rglob("*.parts") if path.is_dir())
+    unmarked_candidates = []
+    for parts_path in candidates:
+        archive_name = parts_path.name.removesuffix(".parts")
+        marker_path = parts_path.parent / f"{archive_name}.archive.json"
+        if marker_path.exists() or marker_path.is_symlink():
+            continue
+        unmarked_candidates.append(parts_path)
+
+    if not unmarked_candidates:
+        print(f"No unmarked legacy parts folders found under: {root}")
+        return True
+
+    print(
+        f"Found {len(unmarked_candidates)} unmarked legacy parts folder(s) under: {root}"
+    )
+    all_succeeded = True
+    for parts_path in unmarked_candidates:
+        try:
+            original_name = validate_legacy_parts_manifest(parts_path)
+            output_path = parts_path.parent / original_name
+            if output_path.exists() or output_path.is_symlink():
+                raise ValueError(f"restore destination already exists: {output_path}")
+
+            if not original_name.endswith(".zip"):
+                merge_parts_dir(parts_path)
+                print(f"Restored legacy file: {output_path}")
+                continue
+
+            directory_name = original_name.removesuffix(".zip")
+            target_directory = parts_path.parent / directory_name
+            if target_directory.exists() or target_directory.is_symlink():
+                raise ValueError(
+                    f"ZIP restore destination already exists: {target_directory}"
+                )
+
+            marker_path = parts_path.parent / f"{original_name}.archive.json"
+            write_legacy_archive_marker(marker_path, original_name)
+            try:
+                merge_parts_dir(parts_path)
+            except (OSError, RuntimeError, ValueError, KeyError):
+                marker_path.unlink(missing_ok=True)
+                raise
+
+            if not restore_tidy_archive(marker_path):
+                all_succeeded = False
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            all_succeeded = False
+            print(f"Could not restore legacy parts {parts_path}: {error}")
+
+    return all_succeeded
+
+
 def validate_zip_members(archive: zipfile.ZipFile, directory_name: str) -> None:
     seen_names = set()
     prefix = f"{directory_name}/"
@@ -194,65 +365,71 @@ def validate_zip_members(archive: zipfile.ZipFile, directory_name: str) -> None:
             raise ValueError(f"symbolic-link ZIP entry is not allowed: {name!r}")
 
 
+def restore_tidy_archive(marker_path: Path) -> bool:
+    try:
+        archive_path, target_directory, directory_name = validate_archive_marker(marker_path)
+    except ValueError as error:
+        print(f"Skipping invalid tidy archive marker {marker_path}: {error}")
+        return False
+
+    parts_path = archive_path.with_name(f"{archive_path.name}.parts")
+    if parts_path.exists():
+        print(f"Skipping archive restore until parts are merged: {parts_path}")
+        return False
+    if not archive_path.is_file():
+        print(f"Skipping archive restore; archive file is missing: {archive_path}")
+        return False
+    if target_directory.exists() or target_directory.is_symlink():
+        print(
+            f"Skipping archive restore; destination already exists: {target_directory}"
+        )
+        return False
+
+    temporary_root = None
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            bad_member = archive.testzip()
+            if bad_member is not None:
+                raise RuntimeError(f"ZIP integrity check failed at member: {bad_member}")
+            validate_zip_members(archive, directory_name)
+
+            temporary_root = Path(
+                tempfile.mkdtemp(
+                    dir=archive_path.parent,
+                    prefix=f".{directory_name}.restore-",
+                )
+            )
+            for member in archive.infolist():
+                destination = temporary_root.joinpath(*PurePosixPath(member.filename).parts)
+                if member.is_dir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                else:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.open(member) as source, open(destination, "wb") as output:
+                        shutil.copyfileobj(source, output)
+
+        restored_directory = temporary_root / directory_name
+        if not restored_directory.is_dir():
+            raise RuntimeError("archive did not restore the expected top-level directory")
+        if target_directory.exists() or target_directory.is_symlink():
+            raise RuntimeError(f"destination already exists: {target_directory}")
+
+        restored_directory.rename(target_directory)
+        archive_path.unlink()
+        marker_path.unlink()
+        print(f"Restored tidy archive: {archive_path} -> {target_directory}")
+        return True
+    except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as error:
+        print(f"Could not restore tidy archive {archive_path}: {error}")
+        return False
+    finally:
+        if temporary_root is not None:
+            shutil.rmtree(temporary_root, ignore_errors=True)
+
+
 def restore_tidy_archives(root: Path) -> None:
     for marker_path in find_archive_markers(root):
-        try:
-            archive_path, target_directory, directory_name = validate_archive_marker(marker_path)
-        except ValueError as error:
-            print(f"Skipping invalid tidy archive marker {marker_path}: {error}")
-            continue
-
-        parts_path = archive_path.with_name(f"{archive_path.name}.parts")
-        if parts_path.exists():
-            print(f"Skipping archive restore until parts are merged: {parts_path}")
-            continue
-        if not archive_path.is_file():
-            print(f"Skipping archive restore; archive file is missing: {archive_path}")
-            continue
-        if target_directory.exists() or target_directory.is_symlink():
-            print(
-                f"Skipping archive restore; destination already exists: {target_directory}"
-            )
-            continue
-
-        temporary_root = None
-        try:
-            with zipfile.ZipFile(archive_path) as archive:
-                bad_member = archive.testzip()
-                if bad_member is not None:
-                    raise RuntimeError(f"ZIP integrity check failed at member: {bad_member}")
-                validate_zip_members(archive, directory_name)
-
-                temporary_root = Path(
-                    tempfile.mkdtemp(
-                        dir=archive_path.parent,
-                        prefix=f".{directory_name}.restore-",
-                    )
-                )
-                for member in archive.infolist():
-                    destination = temporary_root.joinpath(*PurePosixPath(member.filename).parts)
-                    if member.is_dir():
-                        destination.mkdir(parents=True, exist_ok=True)
-                    else:
-                        destination.parent.mkdir(parents=True, exist_ok=True)
-                        with archive.open(member) as source, open(destination, "wb") as output:
-                            shutil.copyfileobj(source, output)
-
-            restored_directory = temporary_root / directory_name
-            if not restored_directory.is_dir():
-                raise RuntimeError("archive did not restore the expected top-level directory")
-            if target_directory.exists() or target_directory.is_symlink():
-                raise RuntimeError(f"destination already exists: {target_directory}")
-
-            restored_directory.rename(target_directory)
-            archive_path.unlink()
-            marker_path.unlink()
-            print(f"Restored tidy archive: {archive_path} -> {target_directory}")
-        except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as error:
-            print(f"Could not restore tidy archive {archive_path}: {error}")
-        finally:
-            if temporary_root is not None:
-                shutil.rmtree(temporary_root, ignore_errors=True)
+        restore_tidy_archive(marker_path)
 
 
 def main() -> None:
@@ -276,7 +453,29 @@ def main() -> None:
         action="store_true",
         help="List available assignments and exit.",
     )
+    parser.add_argument(
+        "--restore-legacy-parts",
+        metavar="FOLDER",
+        help=(
+            "Only restore unmarked legacy *.parts folders recursively under an "
+            "existing repository folder, then exit."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.restore_legacy_parts is not None:
+        if args.assignment or args.list:
+            parser.error(
+                "--restore-legacy-parts cannot be combined with an assignment or --list"
+            )
+        try:
+            restore_root = normalize_restore_root(args.restore_legacy_parts)
+        except ValueError as error:
+            parser.error(str(error))
+        if not restore_legacy_parts(restore_root):
+            raise SystemExit(1)
+        print("Legacy parts restore complete.")
+        return
 
     requirement_files = find_assignment_requirements(REPO_ROOT)
     if not requirement_files:
