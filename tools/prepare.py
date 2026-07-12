@@ -8,19 +8,29 @@ import zipfile
 from pathlib import Path
 from pathlib import PurePosixPath
 
-from merge_parts import merge_parts_dir
+try:
+    from .merge_parts import merge_parts_dir
+except ImportError:
+    from merge_parts import merge_parts_dir
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VENV_DIR = REPO_ROOT / ".venv"
 ARCHIVE_FORMAT_VERSION = 1
+LEGACY_PARTS_MARKER_FORMAT_VERSION = 1
 
 
 def find_archive_markers(root: Path) -> list[Path]:
     return sorted(path for path in root.rglob("*.zip.archive.json") if path.is_file())
 
 
+def find_legacy_parts_markers(root: Path) -> list[Path]:
+    return sorted(path for path in root.rglob("*.parts.prepare.json") if path.is_file())
+
+
 def validate_archive_marker(marker_path: Path) -> tuple[Path, Path, str]:
+    if marker_path.is_symlink() or not marker_path.is_file():
+        raise ValueError("archive marker must be a real file")
     try:
         marker = json.loads(marker_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -48,6 +58,44 @@ def validate_archive_marker(marker_path: Path) -> tuple[Path, Path, str]:
         raise ValueError("marker filename does not match archive_name")
 
     return marker_path.parent / archive_name, marker_path.parent / directory_name, directory_name
+
+
+def validate_legacy_parts_marker(marker_path: Path) -> tuple[Path, str]:
+    if marker_path.is_symlink() or not marker_path.is_file():
+        raise ValueError("legacy parts marker must be a real file")
+    try:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"could not read JSON: {error}") from error
+
+    if (
+        not isinstance(marker, dict)
+        or marker.get("format_version") != LEGACY_PARTS_MARKER_FORMAT_VERSION
+    ):
+        raise ValueError("unsupported or missing legacy parts marker format version")
+
+    original_name = marker.get("original_name")
+    parts_directory_name = marker.get("parts_directory_name")
+    for label, value in (
+        ("original_name", original_name),
+        ("parts_directory_name", parts_directory_name),
+    ):
+        if (
+            not isinstance(value, str)
+            or not value
+            or value in {".", ".."}
+            or "/" in value
+            or "\\" in value
+            or Path(value).name != value
+        ):
+            raise ValueError(f"invalid {label}")
+
+    if parts_directory_name != f"{original_name}.parts":
+        raise ValueError("parts_directory_name does not match original_name")
+    if marker_path.name != f"{parts_directory_name}.prepare.json":
+        raise ValueError("marker filename does not match parts_directory_name")
+
+    return marker_path.parent / parts_directory_name, original_name
 
 
 def find_assignment_requirements(root: Path) -> list[Path]:
@@ -136,38 +184,40 @@ def ensure_ipykernel(venv_python: Path) -> None:
 
 
 def prepare_split_files(root: Path) -> None:
-    markers = find_archive_markers(root)
-    parts_dirs = []
-    for marker_path in markers:
+    legacy_markers = find_legacy_parts_markers(root)
+    for marker_path in legacy_markers:
         try:
-            archive_path, _, _ = validate_archive_marker(marker_path)
-        except ValueError as error:
-            print(f"Skipping invalid tidy archive marker {marker_path}: {error}")
-            continue
-        parts_path = archive_path.with_name(f"{archive_path.name}.parts")
-        if parts_path.exists():
-            parts_dirs.append((archive_path, parts_path))
+            parts_path, original_name = validate_legacy_parts_marker(marker_path)
+            manifest_name = validate_legacy_parts_manifest(parts_path)
+            if manifest_name != original_name:
+                raise ValueError("marker original_name does not match manifest")
+            output_path = parts_path.parent / original_name
+            if output_path.exists() or output_path.is_symlink():
+                raise ValueError(f"restore destination already exists: {output_path}")
+            merge_parts_dir(parts_path)
+            marker_path.unlink()
+            print(f"Restored marked legacy file: {output_path}")
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            print(f"Could not restore marked legacy parts {marker_path}: {error}")
 
-    if not parts_dirs:
-        print("No tidy archive parts folders found for this assignment. Skipping merge step.")
-        return
-
-    print(
-        f"Found {len(parts_dirs)} tidy archive parts folder(s) for this assignment. "
-        "Reconstructing archives..."
-    )
-    for archive_path, parts_path in parts_dirs:
-        if not parts_path.is_dir():
-            print(f"Skipping non-directory archive parts path: {parts_path}")
-        elif archive_path.exists():
-            print(
-                f"Skipping {parts_path}: archive destination already exists: {archive_path}"
-            )
-        else:
-            try:
-                merge_parts_dir(parts_path)
-            except (OSError, RuntimeError, ValueError, KeyError) as error:
-                print(f"Could not merge tidy archive parts {parts_path}: {error}")
+    for marker_path in find_archive_markers(root):
+        try:
+            archive_path, target_directory, _ = validate_archive_marker(marker_path)
+            parts_path = archive_path.with_name(f"{archive_path.name}.parts")
+            if not parts_path.exists() and not parts_path.is_symlink():
+                continue
+            manifest_name = validate_legacy_parts_manifest(parts_path)
+            if manifest_name != archive_path.name:
+                raise ValueError("archive marker does not match parts manifest")
+            if archive_path.exists() or archive_path.is_symlink():
+                raise ValueError(f"archive destination already exists: {archive_path}")
+            if target_directory.exists() or target_directory.is_symlink():
+                raise ValueError(
+                    f"ZIP restore destination already exists: {target_directory}"
+                )
+            merge_parts_dir(parts_path)
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            print(f"Could not merge marked archive parts {marker_path}: {error}")
 
 
 def normalize_restore_root(raw_value: str) -> Path:
@@ -256,6 +306,11 @@ def validate_legacy_parts_manifest(parts_path: Path) -> str:
         raise ValueError(
             f"part(s) must be real files: {', '.join(sorted(invalid_parts))}"
         )
+    actual_size = sum(path.stat().st_size for path in expected_parts)
+    if actual_size != expected_size:
+        raise ValueError(
+            f"part sizes do not match original_size: expected {expected_size}, got {actual_size}"
+        )
     return original_name
 
 
@@ -287,13 +342,116 @@ def write_legacy_archive_marker(marker_path: Path, archive_name: str) -> None:
             temporary_marker.unlink(missing_ok=True)
 
 
+def write_legacy_parts_marker(marker_path: Path, parts_path: Path, original_name: str) -> None:
+    marker = {
+        "format_version": LEGACY_PARTS_MARKER_FORMAT_VERSION,
+        "parts_directory_name": parts_path.name,
+        "original_name": original_name,
+    }
+    temporary_marker = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=marker_path.parent,
+            prefix=f".{marker_path.name}.",
+            delete=False,
+        ) as marker_file:
+            json.dump(marker, marker_file, indent=2)
+            marker_file.write("\n")
+            temporary_marker = Path(marker_file.name)
+        temporary_marker.replace(marker_path)
+    finally:
+        if temporary_marker is not None:
+            temporary_marker.unlink(missing_ok=True)
+
+
+def legacy_parts_candidates(root: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in root.rglob("*.parts")
+        if path.is_dir() or path.is_symlink()
+    )
+
+
+def mark_legacy_parts(root: Path) -> bool:
+    candidates = legacy_parts_candidates(root)
+    if not candidates:
+        print(f"No legacy parts folders found under: {root}")
+        return True
+
+    all_succeeded = True
+    for parts_path in candidates:
+        try:
+            original_name = validate_legacy_parts_manifest(parts_path)
+            output_path = parts_path.parent / original_name
+            if original_name.endswith(".zip"):
+                marker_path = parts_path.parent / f"{original_name}.archive.json"
+                other_marker_path = parts_path.parent / f"{parts_path.name}.prepare.json"
+                if other_marker_path.exists() or other_marker_path.is_symlink():
+                    raise ValueError(f"conflicting legacy parts marker: {other_marker_path}")
+                if marker_path.exists() or marker_path.is_symlink():
+                    archive_path, target_directory, _ = validate_archive_marker(marker_path)
+                    if archive_path != output_path:
+                        raise ValueError("archive marker does not match parts manifest")
+                    if target_directory != parts_path.parent / original_name.removesuffix(".zip"):
+                        raise ValueError("archive marker target does not match parts manifest")
+                    if output_path.exists() or output_path.is_symlink():
+                        raise ValueError(f"archive destination already exists: {output_path}")
+                    if target_directory.exists() or target_directory.is_symlink():
+                        raise ValueError(
+                            f"ZIP restore destination already exists: {target_directory}"
+                        )
+                    print(f"Already marked legacy ZIP parts: {parts_path}")
+                    continue
+
+                target_directory = parts_path.parent / original_name.removesuffix(".zip")
+                if output_path.exists() or output_path.is_symlink():
+                    raise ValueError(f"archive destination already exists: {output_path}")
+                if target_directory.exists() or target_directory.is_symlink():
+                    raise ValueError(
+                        f"ZIP restore destination already exists: {target_directory}"
+                    )
+                write_legacy_archive_marker(marker_path, original_name)
+                print(f"Marked legacy ZIP parts for prepare: {parts_path}")
+                continue
+
+            marker_path = parts_path.parent / f"{parts_path.name}.prepare.json"
+            if marker_path.exists() or marker_path.is_symlink():
+                marked_parts_path, marked_original_name = validate_legacy_parts_marker(
+                    marker_path
+                )
+                if marked_parts_path != parts_path or marked_original_name != original_name:
+                    raise ValueError("legacy parts marker does not match manifest")
+                if output_path.exists() or output_path.is_symlink():
+                    raise ValueError(f"restore destination already exists: {output_path}")
+                print(f"Already marked legacy parts: {parts_path}")
+                continue
+
+            if output_path.exists() or output_path.is_symlink():
+                raise ValueError(f"restore destination already exists: {output_path}")
+            write_legacy_parts_marker(marker_path, parts_path, original_name)
+            print(f"Marked legacy parts for prepare: {parts_path}")
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            all_succeeded = False
+            print(f"Could not mark legacy parts {parts_path}: {error}")
+
+    return all_succeeded
+
+
 def restore_legacy_parts(root: Path) -> bool:
-    candidates = sorted(path for path in root.rglob("*.parts") if path.is_dir())
+    candidates = legacy_parts_candidates(root)
     unmarked_candidates = []
     for parts_path in candidates:
-        archive_name = parts_path.name.removesuffix(".parts")
-        marker_path = parts_path.parent / f"{archive_name}.archive.json"
-        if marker_path.exists() or marker_path.is_symlink():
+        original_name = parts_path.name.removesuffix(".parts")
+        archive_marker_path = parts_path.parent / f"{original_name}.archive.json"
+        prepare_marker_path = parts_path.parent / f"{parts_path.name}.prepare.json"
+        if (
+            archive_marker_path.exists()
+            or archive_marker_path.is_symlink()
+            or prepare_marker_path.exists()
+            or prepare_marker_path.is_symlink()
+        ):
             continue
         unmarked_candidates.append(parts_path)
 
@@ -461,20 +619,38 @@ def main() -> None:
             "existing repository folder, then exit."
         ),
     )
+    parser.add_argument(
+        "--mark-legacy-parts",
+        metavar="FOLDER",
+        help=(
+            "Only mark valid legacy *.parts folders recursively under an existing "
+            "repository folder for a later normal prepare run, then exit."
+        ),
+    )
     args = parser.parse_args()
 
-    if args.restore_legacy_parts is not None:
-        if args.assignment or args.list:
+    migration_mode = args.restore_legacy_parts or args.mark_legacy_parts
+    if migration_mode is not None:
+        if args.assignment or args.list or (
+            args.restore_legacy_parts is not None and args.mark_legacy_parts is not None
+        ):
             parser.error(
-                "--restore-legacy-parts cannot be combined with an assignment or --list"
+                "legacy parts migration options cannot be combined with an assignment, "
+                "--list, or each other"
             )
         try:
-            restore_root = normalize_restore_root(args.restore_legacy_parts)
+            restore_root = normalize_restore_root(migration_mode)
         except ValueError as error:
             parser.error(str(error))
-        if not restore_legacy_parts(restore_root):
+        if args.restore_legacy_parts is not None:
+            succeeded = restore_legacy_parts(restore_root)
+            complete_message = "Legacy parts restore complete."
+        else:
+            succeeded = mark_legacy_parts(restore_root)
+            complete_message = "Legacy parts marking complete."
+        if not succeeded:
             raise SystemExit(1)
-        print("Legacy parts restore complete.")
+        print(complete_message)
         return
 
     requirement_files = find_assignment_requirements(REPO_ROOT)

@@ -77,21 +77,36 @@ You can also prepare a specific assignment directly:
 python3 ./tools/prepare.py deep_learning_specialization/1_neural_networks_and_deep_learning/week_2/logistic_regression_with_a_neural_network_mindset
 ```
 
-Legacy `.parts` folders without a tidy marker remain untouched during normal
-assignment preparation. To restore them once, explicitly choose an existing
-folder inside this repository:
+Legacy `.parts` folders without a migration marker remain untouched during
+normal assignment preparation. To restore unmarked legacy parts immediately,
+explicitly choose an existing folder inside this repository:
 
 ```bash
 python3 ./tools/prepare.py --restore-legacy-parts path/to/folder
 ```
 
-This mode only scans that folder recursively for unmarked `.parts` folders. It
+`--restore-legacy-parts` only scans that folder recursively for unmarked `.parts` folders. It
 validates each manifest and exact part set before merging, safely restores ZIP
 archives with the same integrity, path, symbolic-link, and no-overwrite checks
 used for tidy archives, and does not create a virtual environment, install
 dependencies, or show the assignment picker. Ordinary unmarked `.zip` files are
 not restored. Failures are reported per item while recoverable source artifacts
 are retained.
+
+To approve valid legacy parts for restoration during a future normal
+`prepare.py <assignment>` run—without merging, extracting, or deleting anything—use:
+
+```bash
+python3 ./tools/prepare.py --mark-legacy-parts path/to/folder
+```
+
+`--mark-legacy-parts` writes a migration marker only after validating each
+parts manifest, exact part set, and safe paths. Ordinary `foo.parts` receives
+`foo.parts.prepare.json`; ZIP `foo.zip.parts` receives the compatible
+`foo.zip.archive.json`. Existing valid markers are left unchanged. During later
+normal preparation, unmarked parts (including unmarked ZIP parts) remain
+untouched; only approved ordinary parts are merged, and approved ZIP parts are
+merged and restored.
 
 For VS Code with the Jupyter extension:
 
@@ -122,7 +137,7 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
   Creates a zip archive of the current directory contents.
 
 - `prepare.py`
-  Visitor-friendly setup script. Its default assignment workflow first merges split tidy archives, then restores only tidy-marked directory archives, creates the repo-level `.venv`, and installs that assignment's requirements. User-created `.zip` and unmarked `.parts` files are left untouched unless the one-time `--restore-legacy-parts` mode is explicitly requested for a repository folder.
+  Visitor-friendly setup script. Its default assignment workflow first restores approved legacy parts and tidy archives, then creates the repo-level `.venv` and installs that assignment's requirements. User-created `.zip` and unmarked `.parts` files are left untouched unless `--restore-legacy-parts` is explicitly requested for immediate restoration or `--mark-legacy-parts` is used to approve later default restoration.
 
 - `generate_requirements.py`
   Scans a target assignment folder for `.py` and `.ipynb` imports and creates a `requirements.txt` file when one does not already exist.
@@ -143,6 +158,7 @@ python3 ./tools/download.py
 python3 ./tools/generate_requirements.py /path/to/assignment_folder
 python3 ./tools/prepare.py
 python3 ./tools/prepare.py --restore-legacy-parts path/to/folder
+python3 ./tools/prepare.py --mark-legacy-parts path/to/folder
 python3 ./tools/tidy.py
 python3 ./tools/tidy.py /path/to/target_folder
 python3 ./tools/split_parts.py /path/to/target_folder
@@ -151,7 +167,7 @@ python3 ./tools/merge_parts.py /path/to/target_folder
 
 ## Visitor Workflow
 
-- `prepare.py` is the main visitor entry point for local setup. By default it restores only archives explicitly marked by `tidy.py`, never arbitrary user-created `.zip` or unmarked `.parts` files. The separate `--restore-legacy-parts` mode is an explicit, restore-only migration path scoped to one existing repository folder.
+- `prepare.py` is the main visitor entry point for local setup. By default it restores only tidy archives and legacy parts explicitly marked for restoration; arbitrary user-created `.zip`, unmarked `.parts`, and unmarked ZIP parts remain untouched. `--restore-legacy-parts` is an immediate restore-only migration path scoped to one existing repository folder, while `--mark-legacy-parts` only approves valid parts for a later default prepare run.
 - `generate_requirements.py` is the maintenance helper for creating a missing assignment-level `requirements.txt`.
 - `merge_parts.py` is used by `prepare.py`, or directly by visitors who only want to reconstruct split files.
 - Assignment-level `requirements.txt` files are for visitors who want to install only the packages needed for one notebook at a time.
