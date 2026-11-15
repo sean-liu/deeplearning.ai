@@ -1,6 +1,6 @@
 # Agentic AI Module 2 · Reflection in a Research Agent
 
-This graded lab practices the reflection pattern by drafting, critiquing, and revising an essay with language models. The notebook contains the original exercise template.
+This graded lab practices the reflection pattern by drafting, critiquing, and revising an essay with language models. The notebook contains the completed exercises.
 
 ## Local setup
 
