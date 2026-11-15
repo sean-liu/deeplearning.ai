@@ -1,0 +1,4 @@
+aisuite[openai]
+dlai-grader
+ipython
+python-dotenv
