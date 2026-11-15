@@ -1,0 +1,5 @@
+ipython
+openai
+python-dotenv
+requests
+tavily-python
