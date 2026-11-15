@@ -1,0 +1,11 @@
+aisuite[openai]
+fastapi
+ipython
+jinja2
+markdown
+pandas
+pydantic[email]
+python-dotenv
+requests
+sqlalchemy
+uvicorn

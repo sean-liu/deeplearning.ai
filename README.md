@@ -9,6 +9,9 @@ Programming assignments, notes, and helper scripts for courses on deeplearning.a
   - [2. Improving Deep Neural Networks](./deep_learning_specialization/2_improving_deep_neural_networks/)
   - [4. Convolutional Neural Networks](./deep_learning_specialization/4_convolutional_neural_networks/)
   - [5. Sequence Models](./deep_learning_specialization/5_sequence_models/)
+- [Agentic AI](./agentic_ai/)
+  - [2. Reflection Design Pattern](./agentic_ai/module_2/)
+  - [3. Tool Use](./agentic_ai/module_3/)
 
 ## Structure
 
