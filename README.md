@@ -137,7 +137,9 @@ jupyter notebook
 The `tools/` folder is mainly for repository maintenance. It is useful to you first, and secondarily to anyone cloning the repo who wants to manage or export the course files in the same way.
 
 - `download.py`
-  Creates a zip archive of the current directory contents.
+  Exports one lab workspace to a ZIP in the directory where you run it. With `DOWNLOAD_ALL_LABS = True`, set `LAB_WORKSPACE_ROOT` to the workspace's actual path or create an empty `.lab-workspace-root` file at that workspace's root. Run from anywhere inside that workspace. If neither is set, the script reports the fallback and exports the current directory. Set `DOWNLOAD_ALL_LABS = False` to always export the current directory.
+
+  One visible subdirectory at the selected root gives the ZIP its name. With zero or multiple visible subdirectories, the defaults are `course_labs.zip` (workspace mode) and `lab.zip` (current-directory mode). The export skips hidden files and folders, symlinks, marked exports, and valid ZIPs with the two legacy default names. Keep exercise ZIP resources under other names. If the chosen output name is already taken by a file without this script's ZIP marker, move that file before exporting.
 
 - `prepare.py`
   Visitor-friendly setup script. Its default assignment workflow first restores approved legacy parts and tidy archives, then creates the repo-level `.venv` and installs that assignment's requirements. User-created `.zip` and unmarked `.parts` files are left untouched unless `--restore-legacy-parts` is explicitly requested for immediate restoration or `--mark-legacy-parts` is used to approve later default restoration.
@@ -157,7 +159,7 @@ The `tools/` folder is mainly for repository maintenance. It is useful to you fi
 ### Usage
 
 ```bash
-python3 ./tools/download.py
+LAB_WORKSPACE_ROOT=/path/to/lab/workspace python3 /path/to/download.py
 python3 ./tools/generate_requirements.py /path/to/assignment_folder
 python3 ./tools/prepare.py
 python3 ./tools/prepare.py --restore-legacy-parts path/to/folder
